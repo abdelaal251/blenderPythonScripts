@@ -1,0 +1,55 @@
+import bpy
+
+# Get the selected empty
+selected_empty = bpy.context.object
+if selected_empty.type != 'EMPTY':
+    raise ValueError("Selected object is not an empty.")
+
+# Function to recursively find meshes under any empty
+def find_meshes(empty, meshes):
+    for child in empty.children:
+        if child.type == 'EMPTY':
+            find_meshes(child, meshes)
+        elif child.type == 'MESH':
+            meshes.append(child)
+
+# Create a list to store the meshes
+meshes_to_merge = []
+
+# Find meshes under the children of the selected empty
+for child in selected_empty.children:
+    if child.type == 'EMPTY':
+        find_meshes(child, meshes_to_merge)
+
+# Check if meshes are available to join
+if len(meshes_to_merge) > 0:
+    # Merge the meshes
+    bpy.ops.object.select_all(action='DESELECT')
+    for mesh in meshes_to_merge:
+        mesh.select_set(True)
+    bpy.context.view_layer.objects.active = meshes_to_merge[0]
+    bpy.ops.object.join()
+
+    # Rename the merged mesh
+    merged_mesh = bpy.context.object
+    merged_mesh.name = selected_empty.name
+
+    # Parent the merged mesh to the selected empty
+    bpy.ops.object.select_all(action='DESELECT')
+    selected_empty.select_set(True)
+    merged_mesh.select_set(True)
+    bpy.context.view_layer.objects.active = selected_empty
+    bpy.ops.object.parent_set(type='OBJECT', keep_transform=True)
+'''
+    # Move the merged mesh to the end of the nested empties hierarchy
+    empty_children = selected_empty.children
+    merged_mesh_index = empty_children.index(merged_mesh)
+    bpy.ops.object.select_all(action='DESELECT')
+    merged_mesh.select_set(True)
+    bpy.context.view_layer.objects.active = merged_mesh
+    bpy.ops.object.move_to_end()
+'''
+# Clean up the selection
+bpy.ops.object.select_all(action='DESELECT')
+selected_empty.select_set(True)
+bpy.context.view_layer.objects.active = selected_empty

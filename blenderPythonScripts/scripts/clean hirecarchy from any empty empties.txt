@@ -1,0 +1,24 @@
+import bpy
+
+# Get the selected empty
+selected_empty = bpy.context.object
+if selected_empty.type != 'EMPTY':
+    raise ValueError("Selected object is not an empty.")
+
+# Function to recursively find empties without children and delete them
+def delete_empty_without_children(empty):
+    for child in empty.children:
+        if child.type == 'EMPTY':
+            delete_empty_without_children(child)
+
+    # Check if the empty has no children and delete it
+    if len(empty.children) == 0:
+        if empty.type == 'MESH':
+            # If the empty is a mesh, remove it from the mesh object
+            bpy.data.meshes.remove(empty.data, do_unlink=True)
+        else:
+            # If the empty is a regular empty, remove it from the scene
+            bpy.data.objects.remove(empty, do_unlink=True)
+
+# Delete empties without children under the selected empty
+delete_empty_without_children(selected_empty)

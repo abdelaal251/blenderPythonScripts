@@ -1,0 +1,59 @@
+import bpy
+
+# Variables
+parent_empty_name = "pipe"
+
+# Get the selected empty
+selected_empty = bpy.context.object
+if selected_empty.type != 'EMPTY':
+    raise ValueError("Selected object is not an empty.")
+
+# Get the second-level empties under the selected empty
+second_level_empties = [
+    child for first_level_empty in selected_empty.children
+    if first_level_empty.type == 'EMPTY'
+    for child in first_level_empty.children
+    if child.type == 'EMPTY'
+]
+
+# Loop through the second-level empties
+for second_level_empty in second_level_empties:
+    # Create a list to store the meshes
+    meshes_to_merge = []
+
+    # Function to recursively find meshes under an empty
+    def find_meshes(empty):
+        for child in empty.children:
+            if child.type == 'EMPTY':
+                find_meshes(child)
+            elif child.type == 'MESH':
+                meshes_to_merge.append(child)
+
+    # Find meshes under the current second-level empty
+    find_meshes(second_level_empty)
+
+    # Check if meshes are available to join
+    if len(meshes_to_merge) > 0:
+        # Merge the meshes
+        bpy.ops.object.select_all(action='DESELECT')
+        for mesh in meshes_to_merge:
+            mesh.select_set(True)
+        bpy.context.view_layer.objects.active = meshes_to_merge[0]
+        bpy.ops.object.join()
+
+        # Rename the merged mesh
+        merged_mesh = bpy.context.object
+        merged_mesh.name = second_level_empty.name
+
+        # Get the existing parent empty
+        parent_empty = bpy.data.objects.get(parent_empty_name)
+        if parent_empty is None or parent_empty.type != 'EMPTY':
+            raise ValueError("Existing parent empty not found or is not an empty.")
+
+        # Parent the merged mesh to the existing parent empty
+        merged_mesh.parent = parent_empty
+
+# Clean up the selection
+bpy.ops.object.select_all(action='DESELECT')
+selected_empty.select_set(True)
+bpy.context.view_layer.objects.active = selected_empty

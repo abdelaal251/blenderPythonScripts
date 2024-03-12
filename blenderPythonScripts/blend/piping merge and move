@@ -1,0 +1,75 @@
+import bpy
+import csv
+import os
+
+# Set the path to the CSV file containing empty names
+csv_file_path = "C:/Users/Ahmed Abdelaal/Desktop/python script for blender revolution/pipe lis.csv"
+
+# Set the name of the parent object
+parent_name = "piping"
+
+# Check if the parent object exists in the scene
+parent_object = bpy.data.objects.get(parent_name)
+if not parent_object:
+    print("Parent object not found in the scene.")
+
+
+# Check if the CSV file exists
+if not os.path.isfile(csv_file_path):
+    print("CSV file not found.")
+
+
+# Read empty names from the CSV file
+parent_empty_names = []
+with open(csv_file_path, 'r') as file:
+    reader = csv.reader(file)
+    for row in reader:
+        if len(row) > 0:
+            parent_empty_names.append(row[0])
+
+# Process each parent-empty name from the CSV file
+for parent_empty_name in parent_empty_names:
+    # Find the parent empty object
+    parent_empty_object = bpy.data.objects.get(parent_empty_name)
+    if not parent_empty_object:
+        print(f"Parent empty object '{parent_empty_name}' not found in the scene.")
+        continue
+
+    # Find all the meshes that are children of the parent empty object and its child empty objects
+    mesh_objects = []
+
+    # Add meshes that are direct children of the parent empty object
+    mesh_objects.extend([child for child in parent_empty_object.children if child.type == 'MESH'])
+
+    # Add meshes that are children of the child empty objects
+    child_empty_objects = [child for child in parent_empty_object.children if child.type == 'EMPTY']
+    for child_empty_object in child_empty_objects:
+        mesh_objects.extend([child for child in child_empty_object.children if child.type == 'MESH'])
+
+    if not mesh_objects:
+        print(f"No mesh children found for parent empty object '{parent_empty_name}'.")
+        continue
+
+    # Merge the meshes into a single object
+    bpy.context.view_layer.objects.active = mesh_objects[0]
+    bpy.ops.object.select_all(action='DESELECT')
+    for mesh_object in mesh_objects:
+        mesh_object.select_set(True)
+    bpy.ops.object.join()
+
+    # Get the merged mesh object
+    merged_mesh_object = bpy.context.active_object
+
+    # Rename the merged mesh object with the parent empty name
+    merged_mesh_object.name = parent_empty_name
+
+    # Store the original transformation matrix of the merged mesh object
+    original_matrix = merged_mesh_object.matrix_world.copy()
+
+    # Change the parent of the merged mesh object to the specified parent object
+    merged_mesh_object.parent = parent_object
+
+    # Apply the original transformation matrix to preserve the transform
+    merged_mesh_object.matrix_world = original_matrix
+
+print("Script execution completed.")
