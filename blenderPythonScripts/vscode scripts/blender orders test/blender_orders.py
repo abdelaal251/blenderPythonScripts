@@ -5,21 +5,30 @@ import os
 import logging
 import pandas as pd
 from tqdm import tqdm
+import argparse
 
+# Parse command-line arguments
+if '--' in sys.argv:
+    argv = sys.argv[sys.argv.index('--') + 1:]
+else:
+    argv = []
 
-
-
+parser = argparse.ArgumentParser(description='Blender Python Script')
+parser.add_argument('--module_dir', required=True, help='Directory containing the modules')
+parser.add_argument('--component_excel_path', required=True, help='Path to the component Excel file')
+parser.add_argument('--logging_path', required=True, help='Path to the logging file')
+args = parser.parse_args(argv)
 
 # Add the directory containing your modules to sys.path
-script_dir = os.path.dirname(os.path.realpath(__file__))
-module_dir = os.path.join(script_dir, 'C://Users/Ahmed Abdelaal/Desktop/python script for blender revolution/vscode scripts/blender orders test')
+module_dir = args.module_dir
 sys.path.append(module_dir)
 
-# Load the Excel file that contains valves        -----> make sure to change the comment later if this directory will contains equipment and piping too
-component_excel_path = 'D://projects/NPC/20221117 3d model/automation phase/CDU1/cdu-1a.xlsx'
+# Load the Excel file that contains valves
+component_excel_path = args.component_excel_path
 
 # Logging file path
-logging_path = 'C://Users/Ahmed Abdelaal/Desktop/python script for blender revolution/vscode scripts/cdu1.txt'
+logging_path = args.logging_path
+
 
 # Identify logging settings
 # Configure the logging settings
@@ -33,8 +42,9 @@ valves_oparent_name = "valves"
 parent_name = "civ"
 
 # import needed funtions from other classess
-from sql_connection import connect_to_database, close_database_connection, retrieve_data
 from config import DB_SERVER, DB_DATABASE, DB_USERNAME, DB_PASSWORD
+from sql_connection import connect_to_database, close_database_connection, retrieve_data
+
 from alive_progress import alive_bar
 from blender_actions import (delete_objects_by_names, 
                              check_object_live, 
@@ -381,6 +391,7 @@ def assign_categories():
 ## here the code starts
 create_collection(collection_name)
 assign_categories()
+print("script finish")
 
 
 
