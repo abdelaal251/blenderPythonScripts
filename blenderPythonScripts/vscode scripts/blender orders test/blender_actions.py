@@ -322,12 +322,12 @@ def decimate_modifier(mesh_names, progress):
                 bpy.context.view_layer.objects.active = blender_object
 
                 # Create decimate modifier with planar type and angle limit
-                bpy.ops.object.modifier_add(type='DECIMATE')
-                bpy.context.object.modifiers["Decimate"].decimate_type = 'DISSOLVE'
-                bpy.context.object.modifiers["Decimate"].angle_limit = angle_limit_degrees * (3.14159 / 180.0)
+                # bpy.ops.object.modifier_add(type='DECIMATE')
+                # bpy.context.object.modifiers["Decimate"].decimate_type = 'DISSOLVE'
+                # bpy.context.object.modifiers["Decimate"].angle_limit = angle_limit_degrees * (3.14159 / 180.0)
                 
                 # Apply the decimate modifier
-                bpy.ops.object.modifier_apply({"object": bpy.context.object}, modifier="Decimate")
+                # bpy.ops.object.modifier_apply({"object": bpy.context.object}, modifier="Decimate")
 
                 # incremnt progress
                 progress.update(1)
@@ -361,12 +361,12 @@ def decimate_modifier_single_mesh(mesh_name, progress):
         #bpy.context.scene.objects[mesh_name]
 
         # Create decimate modifier with planar type and angle limit
-        bpy.ops.object.modifier_add(type='DECIMATE')
-        bpy.context.object.modifiers["Decimate"].decimate_type = 'DISSOLVE'
-        bpy.context.object.modifiers["Decimate"].angle_limit = angle_limit_degrees * (3.14159 / 180.0)
+        # bpy.ops.object.modifier_add(type='DECIMATE')
+        # bpy.context.object.modifiers["Decimate"].decimate_type = 'DISSOLVE'
+        # bpy.context.object.modifiers["Decimate"].angle_limit = angle_limit_degrees * (3.14159 / 180.0)
         
         # Apply the decimate modifier
-        bpy.ops.object.modifier_apply({"object": bpy.context.object}, modifier="Decimate")
+        # bpy.ops.object.modifier_apply({"object": bpy.context.object}, modifier="Decimate")
 
         # increment the progress
         progress.update(1)
@@ -439,6 +439,7 @@ def assign_new_parent(mesh_names, parent_name, collection_name, progress):
             progress.update(1)
         else:
             logging.debug(f" mesh object {mesh_object} not found")
+            break
     logging.info(f"Assigning parent for a list finished")
 
 def assign_new_parent_for_one_mesh(mesh_name, parent_name, collection_name, progress):
