@@ -1,4 +1,5 @@
 # blender_orders.py
+import csv
 import bpy
 import sys
 import os
@@ -244,7 +245,63 @@ def perform_action_for_pipes_and_valves(pipes,valves):
             # Log function state
             logging.info(f"perform action for pipes and ended.")
 
+def rename_blender_object(equi_object, new_name):
+    # This function uses Blender's API to rename the object
+    if new_name.startswith('/'):
+        new_name = new_name[1:]
+    equi_object.name = new_name
+    return new_name
 
+def perform_action_for_equi_testing_only(equipments, output_csv='D:/projects/NPC/20221117 3d model/automation phase/cdu1b/equipment_output2.csv'):
+    # counter for the logging 
+    i = 1
+    logging.debug(f"searching for equipments started: {len(equipments)}")
+    
+    output_data = []
+    
+    for equi in equipments:
+        i += 1
+        logging.debug("equipment number in sheet, equipment name in sheet, equipment name in model")
+        
+        equi_object = create_blender_object(equi)
+        new_equi = equi  # Default to original name
+        found_in_model = False
+        
+        if equi_object:
+            found_in_model = True
+        else:
+            if '-' in equi:
+                parts = equi.split('-')
+                if len(parts) == 2 and parts[1].startswith('0'):
+                    # Remove zero if found after the minus
+                    new_equi = parts[0] + '-' + parts[1][1:]
+                    equi_object = create_blender_object(new_equi)
+                    if equi_object:
+                        found_in_model = True
+                        rename_blender_object(equi_object, equi)
+                elif len(parts) == 2 and not parts[1].startswith('0'):
+                    # Add zero if not found after the minus
+                    new_equi = parts[0] + '-' + '0' + parts[1]
+                    equi_object = create_blender_object(new_equi)
+                    if equi_object:
+                        found_in_model = True
+                        rename_blender_object(equi_object, equi)
+        
+        if not equi_object:
+            equi_object = 'notFound'
+        
+        logging.debug(f"{i},{equi},{equi_object}")
+        if new_equi == equi:
+            output_data.append([i, equi, equi_object, "", found_in_model])
+        else:
+            output_data.append([i, equi, equi_object, new_equi, found_in_model])
+    
+    # Write to CSV
+    with open(output_csv, mode='w', newline='') as file:
+        writer = csv.writer(file)
+        writer.writerow(["Number", "Equipment Name", "Equipment Object", "New Equipment Name", "Found In Model"])
+        writer.writerows(output_data)
+    save_and_purge_memory()
 
 
 # Perform actions for all equipment list 
@@ -329,7 +386,12 @@ def perform_action_for_equi(equipments):
 def perform_action_for_piping_equi_valves(data):
     print("performing action in piping, equipments and valves region")
 
-
+def test_equipments_names():
+    equipments = []
+    df = pd.read_excel(component_excel_path)
+    equipments = df.loc[df['Type'] == 'EQUI', 'Name'].tolist()
+    perform_action_for_equi_testing_only(equipments)
+    
 def assign_categories():
 
     # Log function state
@@ -364,7 +426,7 @@ def assign_categories():
     # Execute commands for each category
     for category, data in category_lists.items():
         logging.info(f" excuting commands for {category} category.")
-        execute_commands_for_category(category, data)
+        #execute_commands_for_category(category, data)
 
     # Close the connection
     close_database_connection(conn)
@@ -380,7 +442,6 @@ def assign_categories():
     equipments = df.loc[df['Type'] == 'EQUI', 'Name'].tolist()
     pipes = df.loc[df['Type'] == 'PIPE', 'Name'].tolist()
 
-    #perform_action_for_valves(valves)
     perform_action_for_equi(equipments)
     perform_action_for_pipes_and_valves(pipes, valves)
 
@@ -388,10 +449,14 @@ def assign_categories():
     logging.info(f"assining categories for model suffix.")
 
 
+
+    
 ## here the code starts
-create_collection(collection_name)
+#create_collection(collection_name)
 assign_categories()
-print("script finish")
+#print("Hello, World!")
+#test_equipments_names()
+print("script finished")
 
 
 
