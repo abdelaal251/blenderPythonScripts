@@ -556,3 +556,80 @@ def create_blender_object(object_name):
             print(f"this mesh name not found in the scene {object_name}")
     except Exception as e :
         print(f"error while ceraing blender object {e}")
+        
+# Function to rename any existing object with the same name to avoid conflicts
+def ensure_unique_name(obj, target_name):
+    # If the target name already exists, rename the existing object to avoid conflicts
+    existing_obj = bpy.data.objects.get(target_name)
+    if existing_obj and existing_obj != obj:
+        existing_obj.name = f"{target_name}_old"
+        print(f"Renamed existing object '{target_name}' to '{existing_obj.name}' to avoid conflicts.")
+    
+    # Set the target object to the desired name
+    obj.name = target_name
+
+# Function to merge all child meshes under the valve empty and preserve transformation
+def merge_valve_meshes(valve_empty_name, valve_parent_name, collection_name):
+    # Get the valve empty object
+    valve_empty = bpy.data.objects.get(valve_empty_name)
+    
+    if valve_empty is None or valve_empty.type != 'EMPTY':
+        print(f"Error: Valve empty '{valve_empty_name}' not found or is not an EMPTY.")
+        return None  # Return None to handle errors
+    
+    # Check if the collection exists
+    collection = bpy.data.collections.get(collection_name)
+    if collection is None:
+        print(f"Error: Collection '{collection_name}' not found.")
+        return None
+    
+    # Get or create the parent empty object (VALVES_PARENT)
+    valve_parent = bpy.data.objects.get(valve_parent_name)
+    if valve_parent is None:
+        # If it doesn't exist, create it
+        valve_parent = bpy.data.objects.new(valve_parent_name, None)  # Create new empty
+        collection.objects.link(valve_parent)  # Link the new empty to the collection
+        print(f"Created and linked new parent empty: {valve_parent_name}")
+    
+    # Gather all child meshes under the valve empty
+    child_meshes = [child for child in valve_empty.children if child.type == 'MESH']
+    
+    if not child_meshes:
+        print(f"No child meshes found under valve empty '{valve_empty_name}'.")
+        return None
+    
+    # Select all child meshes
+    bpy.ops.object.select_all(action='DESELECT')  # Deselect everything first
+    for mesh in child_meshes:
+        mesh.select_set(True)  # Select each mesh
+    bpy.context.view_layer.objects.active = child_meshes[0]  # Set one active object
+    
+    # Join the selected meshes into a single mesh
+    bpy.ops.object.join()
+    
+    # Get the newly joined mesh object
+    joined_mesh = bpy.context.active_object
+    
+    # Store the original transformation matrix of the joined mesh
+    original_matrix = joined_mesh.matrix_world.copy()
+    
+    # Ensure the new object has a unique name
+    ensure_unique_name(joined_mesh, valve_empty_name)
+    
+    # Re-parent the joined mesh to the parent empty (VALVES_PARENT)
+    joined_mesh.parent = valve_parent
+    
+    # Restore the original transformation to preserve location, rotation, and scale
+    joined_mesh.matrix_world = original_matrix
+    
+    # Move the joined mesh to the AutomationScript collection (if not already linked)
+    if joined_mesh.name not in collection.objects:
+        collection.objects.link(joined_mesh)
+    
+    # Unlink the merged valve from its original collection
+    for col in joined_mesh.users_collection:
+        if col != collection:
+            col.objects.unlink(joined_mesh)
+    
+    print(f"Successfully merged and linked valve '{valve_empty_name}' to '{valve_parent_name}' with preserved transformation.")
+    return joined_mesh  # Return the joined mesh object for further use

@@ -64,7 +64,9 @@ from blender_actions import (delete_objects_by_names,
                              check_and_delete_empty_objects,
                              link_objects_with_material_categories,
                              join_meshes_for_empties,
-                             save_and_purge_memory)
+                             save_and_purge_memory,
+                             merge_valve_meshes, 
+                             ensure_unique_name)
 
 
 def execute_commands_for_category(category, data):
@@ -148,14 +150,9 @@ def perform_action_for_valves(valves):
     # Save changes
     #save_and_purge_memory()
 
-def perform_action_for_pipes_and_valves(pipes,valves):
-
-    
-
+def perform_action_for_pipes_and_valves(pipes, valves):
     # Log function state
     logging.info(f"perform action for pipes and valves.")
-
-
     
     # UV projection size // default 2.0
     pojection_size = 2.0
@@ -163,87 +160,80 @@ def perform_action_for_pipes_and_valves(pipes,valves):
     # Default material for piping and valves
     material_name = "00-piping grey"
 
-    # valves with slash
+    # Valves with slash
     valves_with_slash = ['/' + valve for valve in valves]
 
-
-
-    # Counters 
+    # Counters
     no_of_pipes = len(pipes)
     no_of_valves = len(valves)
     i = 0
-    print("\r\n")
-    # Initializing progress bars
+
+    # Progress bars for various steps
     with tqdm(total=no_of_pipes, desc="UV Progress", unit="objects") as uv_progress_bar, \
-            tqdm(total=no_of_pipes, desc="Assigning Material", unit="objects") as assign_material_progress, \
-            tqdm(total=1, desc="Combining Meshes", unit="objects") as combining_meshes_progress, \
-            tqdm(total=1, desc="Assigning New Parent for pipe", unit="objects") as assign_parent_progress, \
-            tqdm(total=1, desc="Assigning New Parent for valves", unit="objects") as assign_parent_progress_valves, \
-            tqdm(total=1, desc="Decimation", unit="objects") as decimation_progress,\
-            tqdm(total=no_of_valves, desc="Decimation for valves", unit="objects") as decimation_progress_valves:
-        print("\r\n")   
+        tqdm(total=no_of_pipes, desc="Assigning Material", unit="objects") as assign_material_progress, \
+        tqdm(total=1, desc="Combining Meshes", unit="objects") as combining_meshes_progress, \
+        tqdm(total=1, desc="Assigning New Parent for pipe", unit="objects") as assign_parent_progress, \
+        tqdm(total=1, desc="Assigning New Parent for valves", unit="objects") as assign_parent_progress_valves, \
+        tqdm(total=1, desc="Decimation", unit="objects") as decimation_progress, \
+        tqdm(total=no_of_valves, desc="Decimation for valves", unit="objects") as decimation_progress_valves:
 
+        # Step 1: Merge valve meshes before processing pipes
+        for valve in valves:
+            # Call the valve merging function before doing any pipe processing
+            logging.info(f"Merging valve meshes for {valve}.")
+            merge_valve_meshes(valve, valves_oparent_name, collection_name)
+
+        # Step 2: Process each pipe after the valve meshes have been merged
         for pipe in pipes:
-
-            # Counter increases every pipe
             i += 1
-            logging.info(f"##############################################   {pipe}  // {i} of {no_of_pipes}    ##################")
+            logging.info(f"Processing pipe {pipe} // {i} of {no_of_pipes}")
+            
             blender_object = create_blender_object(pipe)
+            
             if blender_object:
-                #check if the equipment is visivle
+                # Check if the pipe object is visible
                 if not blender_object.hide_get():
-
-                    # initiate new list to contains meshes inside the equipment
-                    child_list = []
-
-                    # select all childerens
+                    child_list = []  # List to store child meshes
+                    
+                    # Select child meshes
                     select_childeren_under_empty(pipe, child_list)
                     
-
-                    #unwrap all meshes
+                    # UV unwrap all child meshes
                     uv_unwrap_cube_projection(child_list, pojection_size, uv_progress_bar)
-                    
-                    # Assign material
+
+                    # Assign material to the child meshes
                     link_objects_with_material(child_list, material_name, assign_material_progress)
-                    
-                    # generate piping list without valves
+
+                    # Exclude valve objects from the piping list
                     piping_list = [item for item in child_list if item not in valves and item not in valves_with_slash]
 
-                    # Joing all meshes
-                    new_joined_mesh = join_meshes(piping_list,pipe, combining_meshes_progress)
-
-                    # assign new parent
-                    assign_new_parent_for_one_mesh(new_joined_mesh, piping_parent_name, collection_name, assign_parent_progress)
+                    # Join non-valve meshes (piping only)
+                    if piping_list:
+                        new_joined_mesh = join_meshes(piping_list, pipe, combining_meshes_progress)
+                        # Assign new parent to the joined mesh
+                        assign_new_parent_for_one_mesh(new_joined_mesh, piping_parent_name, collection_name, assign_parent_progress)
+                    else:
+                        logging.debug(f"No valid meshes found for joining for pipe {pipe}.")
+                    save_and_purge_memory()
             else:
-                logging.debug(f"pipe {pipe} not found in the scene.")
+                logging.debug(f"Pipe {pipe} not found in the scene.")
 
-            # decimate piping mesh
-            #decimate_modifier_single_mesh(new_joined_mesh, decimation_progress)
+        # Final steps: assign parents for valves, save progress, etc.
+        assign_new_parent(valves, valves_oparent_name, collection_name, assign_parent_progress_valves)
+        check_and_delete_empty_objects(valves_oparent_name)
+        save_and_purge_memory()
 
+    # Close Progress Bars
+    uv_progress_bar.close()
+    assign_material_progress.close()
+    combining_meshes_progress.close()
+    assign_parent_progress.close()
+    assign_parent_progress_valves.close()
+    decimation_progress.close()
+    decimation_progress_valves.close()
 
-            # assign new parent for the valves
-            assign_new_parent(valves, valves_oparent_name, collection_name, assign_parent_progress_valves)
+    logging.info(f"Performed action for pipes and valves completed.")
 
-            # Delete unnecessary childs
-            check_and_delete_empty_objects(valves_oparent_name)
-            
-            #decimate valves mesh
-            #decimate_modifier(valves,decimation_progress_valves)
-
-            # save the current state
-            save_and_purge_memory()
-            
-            # Close ProgressBar
-            uv_progress_bar.close()
-            assign_material_progress.close()
-            combining_meshes_progress.close()
-            assign_parent_progress.close()
-            assign_parent_progress_valves.close()
-            decimation_progress.close()
-            decimation_progress_valves.close()
-
-            # Log function state
-            logging.info(f"perform action for pipes and ended.")
 
 def rename_blender_object(equi_object, new_name):
     # This function uses Blender's API to rename the object
