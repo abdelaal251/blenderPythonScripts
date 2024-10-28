@@ -95,6 +95,8 @@ def perform_action_for_category_duplicated(data):
 def perform_action_for_category_misc(data, category):
 
     logging.info(f"perform action for category {category}")
+    print(f"\n perform action for category {category}")
+    print(f"{category} data for {data}\n")
     # UV projection size // default 2.0
     pojection_size = 2.0
     new_mesh_name = "civil"
@@ -299,6 +301,7 @@ def perform_action_for_equi(equipments):
 
     # Log function state
     logging.info(f"performing action for equi started")
+    print("performing action for equi started")
 
     # UV projection size // default 2.0
     pojection_size = 2.0
@@ -383,9 +386,8 @@ def test_equipments_names():
     perform_action_for_equi_testing_only(equipments)
     
 def assign_categories():
-
     # Log function state
-    logging.info(f"assining categories for model suffix.")
+    logging.info(f"Assigning categories based on model suffix.")
     
     # Connect to the SQL Server database
     conn, cursor = connect_to_database()
@@ -393,7 +395,7 @@ def assign_categories():
     # Retrieve data from the table
     rows = retrieve_data(cursor)
 
-    # Create lists based on categories
+    # Initialize dictionary to organize objects by category
     category_lists = {}
 
     for row in rows:
@@ -401,43 +403,83 @@ def assign_categories():
         if category not in category_lists:
             category_lists[category] = {'objects': [], 'keywords': set(), 'materials': []}
 
+        # Split the suffixes and strip whitespace
         suffixes = [s.strip() for s in suffix.split(',')]
 
-        for obj_name in bpy.data.objects:
+        # Iterate through all objects in the scene
+        for obj in bpy.data.objects:
             # Check if the object is a mesh and matches any suffix in the list
-            if obj_name.type == 'MESH' and any(sfx in obj_name.name for sfx in suffixes):
-                category_lists[category]['objects'].append(obj_name.name)
-                keywords = [keyword.strip() for keyword in obj_name.name.split(',')]
+            if obj.type == 'MESH' and any(sfx in obj.name for sfx in suffixes):
+                # Add the matching mesh itself
+                category_lists[category]['objects'].append(obj.name)
+                keywords = [keyword.strip() for keyword in obj.name.split(',')]
                 category_lists[category]['keywords'].update(keywords)
-
-                # Append material information to the materials list for the category
                 category_lists[category]['materials'].append(material)
+                
+                # Retrieve all child meshes of this matching mesh
+                all_child_meshes = get_all_child_meshes_recursive(obj)
+                
+                # Add each child mesh to the category
+                for child_mesh in all_child_meshes:
+                    category_lists[category]['objects'].append(child_mesh.name)
+                    child_keywords = [keyword.strip() for keyword in child_mesh.name.split(',')]
+                    category_lists[category]['keywords'].update(child_keywords)
+                    category_lists[category]['materials'].append(material)
+
+            # Check if the object is an empty and matches any suffix
+            elif obj.type == 'EMPTY' and any(sfx in obj.name for sfx in suffixes):
+                # Retrieve all child meshes recursively
+                matched_meshes = get_all_child_meshes_recursive(obj)
+
+                # Add all matched child meshes to the category
+                for mesh in matched_meshes:
+                    category_lists[category]['objects'].append(mesh.name)
+                    keywords = [keyword.strip() for keyword in mesh.name.split(',')]
+                    category_lists[category]['keywords'].update(keywords)
+                    category_lists[category]['materials'].append(material)
 
     # Execute commands for each category
     for category, data in category_lists.items():
-        logging.info(f" excuting commands for {category} category.")
-        #execute_commands_for_category(category, data)
+        logging.info(f"Executing commands for {category} category.")
+        logging.debug(f"Data for category {category}: {data}")
+        execute_commands_for_category(category, data)
 
     # Close the connection
     close_database_connection(conn)
 
-    # Initialize a list to store valve, equipments and pipes names
+    # Initialize lists for valves, equipment, and pipes
     valves = []
     equipments = []
     pipes = []
 
-    # get valve list from the givn excel sheet
+    # Get lists from the given Excel sheet
     df = pd.read_excel(component_excel_path)
     valves = df.loc[df['Type'] == 'VALV', 'Name'].tolist()
     equipments = df.loc[df['Type'] == 'EQUI', 'Name'].tolist()
     pipes = df.loc[df['Type'] == 'PIPE', 'Name'].tolist()
 
-    perform_action_for_equi(equipments)
-    perform_action_for_pipes_and_valves(pipes, valves)
+    # Perform actions for equipment, pipes, and valves
+    # perform_action_for_equi(equipments)
+    # perform_action_for_pipes_and_valves(pipes, valves)
 
-    # Log function state
-    logging.info(f"assining categories for model suffix.")
+    # Final log statement
+    logging.info(f"Finished assigning categories for model suffixes.")
 
+def get_all_child_meshes_recursive(obj):
+    """
+    Recursively retrieves all child meshes under a given object, regardless of suffix.
+    This is used to collect all direct and nested child meshes when a parent mesh matches the suffix.
+    """
+    matched_meshes = []
+
+    for child in obj.children:
+        if child.type == 'MESH':
+            matched_meshes.append(child)
+        elif child.type == 'EMPTY':
+            # Recursively call to get meshes under nested empties
+            matched_meshes.extend(get_all_child_meshes_recursive(child))
+
+    return matched_meshes
 
 
     
