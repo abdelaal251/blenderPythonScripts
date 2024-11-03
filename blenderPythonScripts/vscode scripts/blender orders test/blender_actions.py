@@ -1,6 +1,8 @@
 import bpy
 import bmesh
 import logging
+import math
+
 
     
 def delete_objects_by_names(object_names):
@@ -77,6 +79,57 @@ def unwrap(obj, projection_size):
             logging.info(f" unwraping completed for object: {obj.name}")
             # Set the mode back to Object
             bpy.ops.object.mode_set(mode='OBJECT')
+            
+def batch_uv_unwrap_with_batches(object_names, projection_size, progress, batch_size=10):
+    """
+    Applies UV unwrap with cube projection to objects in batches to reduce mode switching overhead.
+    
+    Parameters:
+    - object_names (list): List of object names to process.
+    - projection_size (float): The cube size to use for the UV projection.
+    - batch_size (int): Number of objects to process per batch.
+    """
+    logging.info("Starting batched UV unwrapping process")
+
+    # Calculate the total number of batches needed
+    total_batches = math.ceil(len(object_names) / batch_size)
+    
+    for batch_index in range(total_batches):
+        # Define the start and end indices for this batch
+        start = batch_index * batch_size
+        end = start + batch_size
+        batch_objects = object_names[start:end]
+
+        # Deselect all objects
+        bpy.ops.object.select_all(action='DESELECT')
+
+        # Select all objects in the current batch
+        objects_to_unwrap = []
+        for obj_name in batch_objects:
+            obj = bpy.data.objects.get(obj_name)
+            if obj and obj.type == 'MESH':
+                obj.select_set(True)
+                objects_to_unwrap.append(obj)
+
+        # Only proceed if there are objects to unwrap
+        if objects_to_unwrap:
+            # Set an active object from the batch
+            bpy.context.view_layer.objects.active = objects_to_unwrap[0]
+
+            # Switch to Edit Mode for batch processing
+            bpy.ops.object.mode_set(mode='EDIT')
+
+            # Select all geometry and apply cube projection
+            bpy.ops.mesh.select_all(action='SELECT')
+            bpy.ops.uv.cube_project(cube_size=projection_size, correct_aspect=True)
+            logging.info(f"UV unwrapping completed for batch {batch_index + 1} of {total_batches}")
+
+            # Switch back to Object Mode
+            bpy.ops.object.mode_set(mode='OBJECT')
+            bpy.ops.object.select_all(action='DESELECT')
+    
+    logging.info("Batched UV unwrapping process completed")
+    progress.update(batch_size)
 
 def link_objects_with_material_categories(object_list, progress):
 
@@ -633,3 +686,7 @@ def merge_valve_meshes(valve_empty_name, valve_parent_name, collection_name):
     
     print(f"Successfully merged and linked valve '{valve_empty_name}' to '{valve_parent_name}' with preserved transformation.")
     return joined_mesh  # Return the joined mesh object for further use
+
+
+
+

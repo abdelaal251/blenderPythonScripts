@@ -47,7 +47,7 @@ from config import DB_SERVER, DB_DATABASE, DB_USERNAME, DB_PASSWORD
 from sql_connection import connect_to_database, close_database_connection, retrieve_data
 
 from alive_progress import alive_bar
-from blender_actions import (delete_objects_by_names, 
+from blender_actions import (batch_uv_unwrap_with_batches, delete_objects_by_names, 
                              check_object_live, 
                              create_new_empty, 
                              uv_unwrap_cube_projection, 
@@ -98,7 +98,7 @@ def perform_action_for_category_misc(data, category):
     print(f"\n perform action for category {category}")
     print(f"{category} data for {data}\n")
     # UV projection size // default 2.0
-    pojection_size = 2.0
+    pojection_size = 600
     new_mesh_name = "civil"
     length_for_progress_bar = len(data['objects'])
     print("\r\n")
@@ -111,7 +111,10 @@ def perform_action_for_category_misc(data, category):
 
         print("\r\n")
         # Make UVUnwrap using cube projection method
-        uv_unwrap_cube_projection(data['objects'], pojection_size, uv_progress_bar)
+        #uv_unwrap_cube_projection(data['objects'], pojection_size, uv_progress_bar)
+        
+        # Make UVUnwrap using cube projection method in batchs!
+        batch_uv_unwrap_with_batches(data['objects'], pojection_size, uv_progress_bar)
 
         #assign material to list of objects 
         link_objects_with_material_categories(data,assign_material_progress)
@@ -157,7 +160,7 @@ def perform_action_for_pipes_and_valves(pipes, valves):
     logging.info(f"perform action for pipes and valves.")
     
     # UV projection size // default 2.0
-    pojection_size = 2.0
+    pojection_size = 600
 
     # Default material for piping and valves
     material_name = "00-piping grey"
@@ -179,11 +182,7 @@ def perform_action_for_pipes_and_valves(pipes, valves):
         tqdm(total=1, desc="Decimation", unit="objects") as decimation_progress, \
         tqdm(total=no_of_valves, desc="Decimation for valves", unit="objects") as decimation_progress_valves:
 
-        # Step 1: Merge valve meshes before processing pipes
-        for valve in valves:
-            # Call the valve merging function before doing any pipe processing
-            logging.info(f"Merging valve meshes for {valve}.")
-            merge_valve_meshes(valve, valves_oparent_name, collection_name)
+        
 
         # Step 2: Process each pipe after the valve meshes have been merged
         for pipe in pipes:
@@ -201,24 +200,35 @@ def perform_action_for_pipes_and_valves(pipes, valves):
                     select_childeren_under_empty(pipe, child_list)
                     
                     # UV unwrap all child meshes
-                    uv_unwrap_cube_projection(child_list, pojection_size, uv_progress_bar)
+                    #uv_unwrap_cube_projection(child_list, pojection_size, uv_progress_bar)
+                    
+                    # Make UVUnwrap using cube projection method in batchs!
+                    batch_uv_unwrap_with_batches(child_list, pojection_size, uv_progress_bar)
 
                     # Assign material to the child meshes
                     link_objects_with_material(child_list, material_name, assign_material_progress)
-
-                    # Exclude valve objects from the piping list
-                    piping_list = [item for item in child_list if item not in valves and item not in valves_with_slash]
-
-                    # Join non-valve meshes (piping only)
-                    if piping_list:
-                        new_joined_mesh = join_meshes(piping_list, pipe, combining_meshes_progress)
-                        # Assign new parent to the joined mesh
-                        assign_new_parent_for_one_mesh(new_joined_mesh, piping_parent_name, collection_name, assign_parent_progress)
-                    else:
-                        logging.debug(f"No valid meshes found for joining for pipe {pipe}.")
-                    save_and_purge_memory()
             else:
                 logging.debug(f"Pipe {pipe} not found in the scene.")
+        # Step 1: Merge valve meshes before processing pipes
+        for valve in valves:
+            # Call the valve merging function before doing any pipe processing
+            logging.info(f"Merging valve meshes for {valve}.")
+            merge_valve_meshes(valve, valves_oparent_name, collection_name)
+        # Join non-valve meshes (piping only)
+        
+        # Exclude valve objects from the piping list
+        piping_list = [item for item in child_list if item not in valves and item not in valves_with_slash]
+        
+        for pipe in pipes:
+            i += 1
+            logging.info(f"Processing pipe {pipe} // {i} of {no_of_pipes} joining an assigning new parent")
+            if piping_list:
+                new_joined_mesh = join_meshes(piping_list, pipe, combining_meshes_progress)
+                # Assign new parent to the joined mesh
+                assign_new_parent_for_one_mesh(new_joined_mesh, piping_parent_name, collection_name, assign_parent_progress)
+            else:
+                logging.debug(f"No valid meshes found for joining for pipe {pipe}.")
+            save_and_purge_memory()
 
         # Final steps: assign parents for valves, save progress, etc.
         assign_new_parent(valves, valves_oparent_name, collection_name, assign_parent_progress_valves)
@@ -304,7 +314,7 @@ def perform_action_for_equi(equipments):
     print("performing action for equi started")
 
     # UV projection size // default 2.0
-    pojection_size = 2.0
+    pojection_size = 600
 
     # Material name
     material_name = "00-EQUIPMENTS"
@@ -459,8 +469,8 @@ def assign_categories():
     pipes = df.loc[df['Type'] == 'PIPE', 'Name'].tolist()
 
     # Perform actions for equipment, pipes, and valves
-    # perform_action_for_equi(equipments)
-    # perform_action_for_pipes_and_valves(pipes, valves)
+    perform_action_for_equi(equipments)
+    perform_action_for_pipes_and_valves(pipes, valves)
 
     # Final log statement
     logging.info(f"Finished assigning categories for model suffixes.")
