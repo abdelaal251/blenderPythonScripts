@@ -123,13 +123,14 @@ def batch_uv_unwrap_with_batches(object_names, projection_size, progress, batch_
             bpy.ops.mesh.select_all(action='SELECT')
             bpy.ops.uv.cube_project(cube_size=projection_size, correct_aspect=True)
             logging.info(f"UV unwrapping completed for batch {batch_index + 1} of {total_batches}")
+            progress.update(batch_size)
 
             # Switch back to Object Mode
             bpy.ops.object.mode_set(mode='OBJECT')
             bpy.ops.object.select_all(action='DESELECT')
     
     logging.info("Batched UV unwrapping process completed")
-    progress.update(batch_size)
+    
 
 def link_objects_with_material_categories(object_list, progress):
 
@@ -599,16 +600,27 @@ def select_childeren_under_empty(empty, childs_list):
 def create_blender_object(object_name):
     try:
         if object_name:
-            if bpy.data.objects.get(object_name):
-                blender_object = bpy.data.objects.get(object_name)
+            print(f'Object name provided: {object_name}')
+            
+            # Attempt to find the object by name, with or without a leading '/'
+            blender_object = bpy.data.objects.get(object_name) or bpy.data.objects.get("/" + object_name)
+            
+            if blender_object:
+                print(f'Blender object found: {blender_object.name} → type {blender_object.type}')
                 return blender_object
-            elif bpy.data.objects.get("/" + object_name):
-                blender_object = bpy.data.objects.get("/" + object_name)
-                return blender_object
+            else:
+                print(f"Object '{object_name}' not found in the scene.")
+                logging.info(f"Object '{object_name}' not found in the scene.")
+                return None  # Explicitly return None if object isn't found
         else:
-            print(f"this mesh name not found in the scene {object_name}")
-    except Exception as e :
-        print(f"error while ceraing blender object {e}")
+            print("No object name provided.")
+            logging.info("No object name provided.")
+            return None
+            
+    except Exception as e:
+        print(f"Error while creating Blender object: {e}")
+        logging.error(f"Error while creating Blender object '{object_name}': {e}")
+        return None
         
 # Function to rename any existing object with the same name to avoid conflicts
 def ensure_unique_name(obj, target_name):
@@ -617,6 +629,7 @@ def ensure_unique_name(obj, target_name):
     if existing_obj and existing_obj != obj:
         existing_obj.name = f"{target_name}_old"
         print(f"Renamed existing object '{target_name}' to '{existing_obj.name}' to avoid conflicts.")
+        logging.info(f"Renamed existing object '{target_name}' to '{existing_obj.name}' to avoid conflicts.")
     
     # Set the target object to the desired name
     obj.name = target_name
@@ -624,16 +637,18 @@ def ensure_unique_name(obj, target_name):
 # Function to merge all child meshes under the valve empty and preserve transformation
 def merge_valve_meshes(valve_empty_name, valve_parent_name, collection_name):
     # Get the valve empty object
-    valve_empty = bpy.data.objects.get(valve_empty_name)
+    valve_empty = create_blender_object(valve_empty_name)
     
     if valve_empty is None or valve_empty.type != 'EMPTY':
         print(f"Error: Valve empty '{valve_empty_name}' not found or is not an EMPTY.")
+        logging.error(f"Error: Valve empty '{valve_empty_name}' not found or is not an EMPTY.")
         return None  # Return None to handle errors
     
     # Check if the collection exists
     collection = bpy.data.collections.get(collection_name)
     if collection is None:
         print(f"Error: Collection '{collection_name}' not found.")
+        logging.warning(f"Error: Collection '{collection_name}' not found.")
         return None
     
     # Get or create the parent empty object (VALVES_PARENT)
@@ -643,12 +658,14 @@ def merge_valve_meshes(valve_empty_name, valve_parent_name, collection_name):
         valve_parent = bpy.data.objects.new(valve_parent_name, None)  # Create new empty
         collection.objects.link(valve_parent)  # Link the new empty to the collection
         print(f"Created and linked new parent empty: {valve_parent_name}")
+        logging.info(f"Created and linked new parent empty: {valve_parent_name}")
     
     # Gather all child meshes under the valve empty
     child_meshes = [child for child in valve_empty.children if child.type == 'MESH']
     
     if not child_meshes:
         print(f"No child meshes found under valve empty '{valve_empty_name}'.")
+        logging.info(f"No child meshes found under valve empty '{valve_empty_name}'.")
         return None
     
     # Select all child meshes
@@ -685,6 +702,7 @@ def merge_valve_meshes(valve_empty_name, valve_parent_name, collection_name):
             col.objects.unlink(joined_mesh)
     
     print(f"Successfully merged and linked valve '{valve_empty_name}' to '{valve_parent_name}' with preserved transformation.")
+    logging.info(f"Successfully merged and linked valve '{valve_empty_name}' to '{valve_parent_name}' with preserved transformation.")
     return joined_mesh  # Return the joined mesh object for further use
 
 

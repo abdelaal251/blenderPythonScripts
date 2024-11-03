@@ -168,10 +168,13 @@ def perform_action_for_pipes_and_valves(pipes, valves):
     # Valves with slash
     valves_with_slash = ['/' + valve for valve in valves]
 
-    # Counters
+    # Counters maximum limits
     no_of_pipes = len(pipes)
     no_of_valves = len(valves)
+
+    # counters initialization
     i = 0
+    j = 0
 
     # Progress bars for various steps
     with tqdm(total=no_of_pipes, desc="UV Progress", unit="objects") as uv_progress_bar, \
@@ -181,15 +184,17 @@ def perform_action_for_pipes_and_valves(pipes, valves):
         tqdm(total=1, desc="Assigning New Parent for valves", unit="objects") as assign_parent_progress_valves, \
         tqdm(total=1, desc="Decimation", unit="objects") as decimation_progress, \
         tqdm(total=no_of_valves, desc="Decimation for valves", unit="objects") as decimation_progress_valves:
-
+    
         
 
-        # Step 2: Process each pipe after the valve meshes have been merged
+        # Step 1: Process each pipe after the valve meshes have been merged
         for pipe in pipes:
             i += 1
             logging.info(f"Processing pipe {pipe} // {i} of {no_of_pipes}")
             
+            # try to get pipe with same name as it is
             blender_object = create_blender_object(pipe)
+
             
             if blender_object:
                 # Check if the pipe object is visible
@@ -209,21 +214,34 @@ def perform_action_for_pipes_and_valves(pipes, valves):
                     link_objects_with_material(child_list, material_name, assign_material_progress)
             else:
                 logging.debug(f"Pipe {pipe} not found in the scene.")
-        # Step 1: Merge valve meshes before processing pipes
+        
+        # Step 2: Merge valve meshes before processing pipes
         for valve in valves:
             # Call the valve merging function before doing any pipe processing
             logging.info(f"Merging valve meshes for {valve}.")
-            merge_valve_meshes(valve, valves_oparent_name, collection_name)
-        # Join non-valve meshes (piping only)
-        
-        # Exclude valve objects from the piping list
-        piping_list = [item for item in child_list if item not in valves and item not in valves_with_slash]
+
+            valve_empty_object = create_blender_object(valve)
+            merge_valve_meshes(valve_empty_object, valves_oparent_name, collection_name)
+
         
         for pipe in pipes:
-            i += 1
+            
+            # List to store child meshes
+            child_list = []  
+                    
+            # Select child meshes
+            select_childeren_under_empty(pipe, child_list)
+
+            # create list of piping items underneathe the pipe we are looping for
+            piping_list = [item for item in child_list if item not in valves and item not in valves_with_slash]
+            
+            # increase counter by 1 for each loop
+            j += 1
             logging.info(f"Processing pipe {pipe} // {i} of {no_of_pipes} joining an assigning new parent")
             if piping_list:
                 new_joined_mesh = join_meshes(piping_list, pipe, combining_meshes_progress)
+                print(f"new joined mesh is {new_joined_mesh}")
+                
                 # Assign new parent to the joined mesh
                 assign_new_parent_for_one_mesh(new_joined_mesh, piping_parent_name, collection_name, assign_parent_progress)
             else:
@@ -452,7 +470,7 @@ def assign_categories():
     for category, data in category_lists.items():
         logging.info(f"Executing commands for {category} category.")
         logging.debug(f"Data for category {category}: {data}")
-        execute_commands_for_category(category, data)
+        #execute_commands_for_category(category, data)
 
     # Close the connection
     close_database_connection(conn)
@@ -467,9 +485,11 @@ def assign_categories():
     valves = df.loc[df['Type'] == 'VALV', 'Name'].tolist()
     equipments = df.loc[df['Type'] == 'EQUI', 'Name'].tolist()
     pipes = df.loc[df['Type'] == 'PIPE', 'Name'].tolist()
+    logging.info(f"valves extracted {valves}")
+    logging.info(f"pipes extracted {pipes}")
 
     # Perform actions for equipment, pipes, and valves
-    perform_action_for_equi(equipments)
+    #perform_action_for_equi(equipments)
     perform_action_for_pipes_and_valves(pipes, valves)
 
     # Final log statement
