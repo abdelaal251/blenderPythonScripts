@@ -1,0 +1,14 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+
+        {
+            "name": "Blender Script",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}\\blenderPythonScripts\\vscode scripts\\blender orders test\\blender_orders.py",
+            "args": [],
+            "console": "integratedTerminal"
+        }
+    ]
+}

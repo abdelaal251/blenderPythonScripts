@@ -1,5 +1,6 @@
 # blender_orders.py
 import csv
+import subprocess
 import bpy
 import sys
 import os
@@ -8,6 +9,14 @@ import pandas as pd
 from tqdm import tqdm
 import argparse
 
+
+# Define default paths
+DEFAULT_MODULE_DIR = r"C:\Users\Ahmed Abdelaal\source\repos\blenderPythonScripts\blenderPythonScripts\blenderPythonScripts\vscode scripts\blender orders test"
+DEFAULT_COMPONENT_EXCEL_PATH = r"D:\projects\NPC\20221117 3d model\optimizationV3\CD2 area A\CDU-2.xlsx"
+DEFAULT_LOGGING_PATH = r"D:\projects\NPC\20221117 3d model\optimizationV3\CD2 area A\CD2Area-A-z-up-try22.txt"
+DEFAULT_BLEND_FILE = r"D:\projects\NPC\20221117 3d model\optimizationV3\CD2 area A\CD2Area-A-z-up-try22.blend"
+BLENDER_PATH = r"C:\Program Files\Blender Foundation\Blender 3.6\blender.exe"
+
 # Parse command-line arguments
 if '--' in sys.argv:
     argv = sys.argv[sys.argv.index('--') + 1:]
@@ -15,13 +24,29 @@ else:
     argv = []
 
 parser = argparse.ArgumentParser(description='Blender Python Script')
-parser.add_argument('--module_dir', required=True, help='Directory containing the modules')
-parser.add_argument('--component_excel_path', required=True, help='Path to the component Excel file')
-parser.add_argument('--logging_path', required=True, help='Path to the logging file')
+parser.add_argument('--module_dir', default=DEFAULT_MODULE_DIR, help='Directory containing the modules')
+parser.add_argument('--component_excel_path', default=DEFAULT_COMPONENT_EXCEL_PATH, help='Path to the component Excel file')
+parser.add_argument('--logging_path',default=DEFAULT_LOGGING_PATH, help='Path to the logging file')
 args = parser.parse_args(argv)
 
 # Add the directory containing your modules to sys.path
 module_dir = args.module_dir
+
+# Run Blender in the background with the specified script and arguments
+# blend_command = [
+#     BLENDER_PATH,
+#     "--background",  # Run in background
+#     DEFAULT_BLEND_FILE,
+#     "--python", os.path.join(args.module_dir, "blender_orders.py"),
+#     "--",  # Separator for Blender-specific arguments
+#     "--module_dir", args.module_dir,
+#     "--component_excel_path", args.component_excel_path,
+#     "--logging_path", args.logging_path
+# ]
+
+# # Execute the Blender process
+# subprocess.run(blend_command)
+
 sys.path.append(module_dir)
 
 # Load the Excel file that contains valves
@@ -176,6 +201,8 @@ def perform_action_for_pipes_and_valves(pipes, valves):
     i = 0
     j = 0
 
+    # piping list in the model
+    piping_list_in_model = []
     # Progress bars for various steps
     with tqdm(total=no_of_pipes, desc="UV Progress", unit="objects") as uv_progress_bar, \
         tqdm(total=no_of_pipes, desc="Assigning Material", unit="objects") as assign_material_progress, \
@@ -197,6 +224,7 @@ def perform_action_for_pipes_and_valves(pipes, valves):
 
             
             if blender_object:
+                piping_list_in_model.append(pipe)
                 # Check if the pipe object is visible
                 if not blender_object.hide_get():
                     child_list = []  # List to store child meshes
@@ -214,6 +242,7 @@ def perform_action_for_pipes_and_valves(pipes, valves):
                     link_objects_with_material(child_list, material_name, assign_material_progress)
             else:
                 logging.debug(f"Pipe {pipe} not found in the scene.")
+            save_and_purge_memory()
         
         # Step 2: Merge valve meshes before processing pipes
         for valve in valves:
@@ -224,7 +253,7 @@ def perform_action_for_pipes_and_valves(pipes, valves):
             merge_valve_meshes(valve_empty_object, valves_oparent_name, collection_name)
 
         
-        for pipe in pipes:
+        for pipe in piping_list_in_model:
             
             # List to store child meshes
             child_list = []  
@@ -237,7 +266,7 @@ def perform_action_for_pipes_and_valves(pipes, valves):
             
             # increase counter by 1 for each loop
             j += 1
-            logging.info(f"Processing pipe {pipe} // {i} of {no_of_pipes} joining an assigning new parent")
+            logging.info(f"Processing pipe {pipe} // {i} of {len(piping_list_in_model)} joining an assigning new parent")
             if piping_list:
                 new_joined_mesh = join_meshes(piping_list, pipe, combining_meshes_progress)
                 print(f"new joined mesh is {new_joined_mesh}")

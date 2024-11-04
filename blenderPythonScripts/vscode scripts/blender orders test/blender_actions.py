@@ -545,11 +545,12 @@ def check_and_delete_empty_objects(parent_object):
     bpy.ops.object.select_all(action='DESELECT')
     
     # Select empty objects under the parent
-    for child_object in blender_object.children:
-        if not child_object.data:
-            child_object.select_set(True)
-            bpy.ops.object.delete()
-    logging.info(f"check and delete empty objects ends")
+    if blender_object.children:
+        for child_object in blender_object.children:
+            if not child_object.data:
+                child_object.select_set(True)
+                bpy.ops.object.delete()
+        logging.info(f"check and delete empty objects ends")
 
 def unwrap_meshes_under_empty(empty_name):
 
@@ -598,46 +599,69 @@ def select_childeren_under_empty(empty, childs_list):
 
 
 def create_blender_object(object_name):
+    object_name = str(object_name)
     try:
-        if object_name:
-            print(f'Object name provided: {object_name}')
-            
-            # Attempt to find the object by name, with or without a leading '/'
-            blender_object = bpy.data.objects.get(object_name) or bpy.data.objects.get("/" + object_name)
-            
-            if blender_object:
-                print(f'Blender object found: {blender_object.name} → type {blender_object.type}')
-                return blender_object
-            else:
-                print(f"Object '{object_name}' not found in the scene.")
-                logging.info(f"Object '{object_name}' not found in the scene.")
-                return None  # Explicitly return None if object isn't found
-        else:
-            print("No object name provided.")
-            logging.info("No object name provided.")
+        # Check if the object_name is a non-empty string
+        if not isinstance(object_name, str) or not object_name.strip():
+            print("Invalid object name provided. Must be a non-empty string.")
+            logging.info("Invalid object name provided. Must be a non-empty string.")
             return None
-            
+
+        print(f'Object name provided: {object_name}')
+
+        # Attempt to find the object by name, with or without a leading '/'
+        blender_object = bpy.data.objects.get(object_name) or bpy.data.objects.get("/" + object_name)
+
+        if blender_object:
+            print(f'Blender object found: {blender_object.name} → type {blender_object.type}')
+            return blender_object
+        else:
+            print(f"Object '{object_name}' not found in the scene.")
+            logging.info(f"Object '{object_name}' not found in the scene.")
+            return None  # Explicitly return None if object isn't found
+
     except Exception as e:
-        print(f"Error while creating Blender object: {e}")
+        print(f"Error while creating Blender object '{object_name}': {e}")
         logging.error(f"Error while creating Blender object '{object_name}': {e}")
         return None
-        
+
+
 # Function to rename any existing object with the same name to avoid conflicts
-def ensure_unique_name(obj, target_name):
-    # If the target name already exists, rename the existing object to avoid conflicts
+def ensure_unique_name(obj: bpy.types.Object, target_object: bpy.types.Object):
+    if not isinstance(target_object, bpy.types.Object):
+        raise TypeError(f"Expected target_object to be a Blender Object, but got {type(target_object)} instead.")
+    
+    # Explicitly store a copy of the target object's name
+    target_name = str(target_object.name)
+    
+    # Find an existing object by the target name
     existing_obj = bpy.data.objects.get(target_name)
-    if existing_obj and existing_obj != obj:
-        existing_obj.name = f"{target_name}_old"
+    if existing_obj and existing_obj != target_object:
+        # Modify the existing object’s name by adding an incrementing suffix until it is unique
+        counter = 1
+        new_name = f"{target_name}_old_{counter}"
+        while new_name in bpy.data.objects:
+            counter += 1
+            new_name = f"{target_name}_old_{counter}"
+        
+        # Rename the existing object
+        existing_obj.name = new_name
         print(f"Renamed existing object '{target_name}' to '{existing_obj.name}' to avoid conflicts.")
         logging.info(f"Renamed existing object '{target_name}' to '{existing_obj.name}' to avoid conflicts.")
     
-    # Set the target object to the desired name
+    # Assign the target name to obj, ensuring no conflicts
     obj.name = target_name
+    target_object.name = target_name
+    print(f"Assigned name '{target_name}' to object '{obj.name}'.")
+    logging.info(f"Assigned name '{target_name}' to object '{obj.name}'.")
+
+
+
 
 # Function to merge all child meshes under the valve empty and preserve transformation
 def merge_valve_meshes(valve_empty_name, valve_parent_name, collection_name):
     # Get the valve empty object
-    valve_empty = create_blender_object(valve_empty_name)
+    valve_empty = valve_empty_name
     
     if valve_empty is None or valve_empty.type != 'EMPTY':
         print(f"Error: Valve empty '{valve_empty_name}' not found or is not an EMPTY.")
