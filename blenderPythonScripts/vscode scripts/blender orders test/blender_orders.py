@@ -12,7 +12,7 @@ import argparse
 
 # Define default paths
 DEFAULT_MODULE_DIR = r"C:\Users\Ahmed Abdelaal\source\repos\blenderPythonScripts\blenderPythonScripts\blenderPythonScripts\vscode scripts\blender orders test"
-DEFAULT_COMPONENT_EXCEL_PATH = r"D:\projects\NPC\20221117 3d model\optimizationV3\CD2 area A\CDU-2.xlsx"
+DEFAULT_COMPONENT_EXCEL_PATH = r"D:\projects\NPC\20221117 3d model\optimizationV3\CD2 area A\CDU-2_1.xlsx"
 DEFAULT_LOGGING_PATH = r"D:\projects\NPC\20221117 3d model\optimizationV3\CD2 area A\CD2Area-A-z-up-try22.txt"
 DEFAULT_BLEND_FILE = r"D:\projects\NPC\20221117 3d model\optimizationV3\CD2 area A\CD2Area-A-z-up-try22.blend"
 BLENDER_PATH = r"C:\Program Files\Blender Foundation\Blender 3.6\blender.exe"
@@ -91,7 +91,9 @@ from blender_actions import (batch_uv_unwrap_with_batches, delete_objects_by_nam
                              join_meshes_for_empties,
                              save_and_purge_memory,
                              merge_valve_meshes, 
-                             ensure_unique_name)
+                             ensure_unique_name,
+                             delete_recursive,
+                             unlink_from_other_collections)
 
 
 def execute_commands_for_category(category, data):
@@ -100,6 +102,7 @@ def execute_commands_for_category(category, data):
 
     # Ordering is important while implementing steps into these categories
     elif category == 'foundation' or category == 'gaugeLadder' or category == 'ground' or category == 'handrail' or category == 'panel' or category == 'stair' or category == 'steel':
+        #print("other categories, skipping...")
         perform_action_for_category_misc(data, category)
 
 
@@ -121,7 +124,6 @@ def perform_action_for_category_misc(data, category):
 
     logging.info(f"perform action for category {category}")
     print(f"\n perform action for category {category}")
-    print(f"{category} data for {data}\n")
     # UV projection size // default 2.0
     pojection_size = 600
     new_mesh_name = "civil"
@@ -150,6 +152,10 @@ def perform_action_for_category_misc(data, category):
         # Assign new parent
         assign_new_parent_for_one_mesh(joined_mesh,parent_name,collection_name,assign_parent_progress)
         
+        joined_mesh_object = create_blender_object(joined_mesh)
+        
+        if joined_mesh_object:
+            unlink_from_other_collections(joined_mesh_object,collection_name)
 
         # Apply decimation
         #decimate_modifier_single_mesh(joined_mesh,decimation_progress)
@@ -161,7 +167,6 @@ def perform_action_for_category_misc(data, category):
         assign_parent_progress.close()
         decimation_progress.close()
 
-        # Save changes
         save_and_purge_memory()
 
 def perform_action_for_valves(valves):
@@ -200,6 +205,7 @@ def perform_action_for_pipes_and_valves(pipes, valves):
     # counters initialization
     i = 0
     j = 0
+    k = 0
 
     # piping list in the model
     piping_list_in_model = []
@@ -216,6 +222,7 @@ def perform_action_for_pipes_and_valves(pipes, valves):
 
         # Step 1: Process each pipe after the valve meshes have been merged
         for pipe in pipes:
+            
             i += 1
             logging.info(f"Processing pipe {pipe} // {i} of {no_of_pipes}")
             
@@ -236,25 +243,37 @@ def perform_action_for_pipes_and_valves(pipes, valves):
                     #uv_unwrap_cube_projection(child_list, pojection_size, uv_progress_bar)
                     
                     # Make UVUnwrap using cube projection method in batchs!
-                    batch_uv_unwrap_with_batches(child_list, pojection_size, uv_progress_bar)
+                    #batch_uv_unwrap_with_batches(child_list, pojection_size, uv_progress_bar)
 
                     # Assign material to the child meshes
                     link_objects_with_material(child_list, material_name, assign_material_progress)
+                
+                    
+                    # Save and purge memory every 10 iterations
+                    if i % 10 == 0:
+                        save_and_purge_memory()
+                        logging.info(f"Memory saved and purged at pipe {i}.")
             else:
                 logging.debug(f"Pipe {pipe} not found in the scene.")
-            save_and_purge_memory()
+            
         
         # Step 2: Merge valve meshes before processing pipes
         for valve in valves:
+            k +=1
             # Call the valve merging function before doing any pipe processing
             logging.info(f"Merging valve meshes for {valve}.")
 
-            valve_empty_object = create_blender_object(valve)
-            merge_valve_meshes(valve_empty_object, valves_oparent_name, collection_name)
+            joined_mesh = merge_valve_meshes(valve, valves_oparent_name, collection_name)
+            logging.info(joined_mesh)
+            
+            # Save and purge memory every 10 valves
+            if k % 10 == 0:
+                save_and_purge_memory()
+                logging.info(f"Memory saved and purged after processing {k} valves.")
 
         
         for pipe in piping_list_in_model:
-            
+                        
             # List to store child meshes
             child_list = []  
                     
@@ -273,13 +292,20 @@ def perform_action_for_pipes_and_valves(pipes, valves):
                 
                 # Assign new parent to the joined mesh
                 assign_new_parent_for_one_mesh(new_joined_mesh, piping_parent_name, collection_name, assign_parent_progress)
+                
+                joined_mesh_object = create_blender_object(new_joined_mesh)
+        
+                if joined_mesh_object:
+                    unlink_from_other_collections(joined_mesh_object,collection_name)
+
             else:
                 logging.debug(f"No valid meshes found for joining for pipe {pipe}.")
-            save_and_purge_memory()
+            # Save and purge memory every 10 iterations
+            if j % 10 == 0:
+                save_and_purge_memory()
+                logging.info(f"Memory saved and purged at pipe {i}.")
 
-        # Final steps: assign parents for valves, save progress, etc.
-        assign_new_parent(valves, valves_oparent_name, collection_name, assign_parent_progress_valves)
-        check_and_delete_empty_objects(valves_oparent_name)
+        #check_and_delete_empty_objects(valves_oparent_name)
         save_and_purge_memory()
 
     # Close Progress Bars
@@ -400,7 +426,6 @@ def perform_action_for_equi(equipments):
                     # select all childerens
                     select_childeren_under_empty(equi, child_list)
                     
-
                     #unwrap all meshes
                     uv_unwrap_cube_projection(child_list, pojection_size, uv_progress_bar)
                     
@@ -413,6 +438,12 @@ def perform_action_for_equi(equipments):
 
                     # assign new parent
                     assign_new_parent_for_one_mesh(new_joined_mesh, equipment_parent_name, collection_name, assign_parent_progress)
+                    
+                    joined_mesh_object = create_blender_object(new_joined_mesh)
+                    
+                    if joined_mesh_object:
+                        unlink_from_other_collections(joined_mesh_object,collection_name)
+
             else:
                 logging.debug(f"equipment {equi} not found in the scene.")
             
@@ -429,7 +460,6 @@ def perform_action_for_equi(equipments):
         decimation_progress.close()
         # Log function state
         logging.info(f"performing action for equi ended")
-
 
 
 
@@ -484,7 +514,11 @@ def assign_categories():
                     category_lists[category]['materials'].append(material)
 
             # Check if the object is an empty and matches any suffix
-            elif obj.type == 'EMPTY' and any(sfx in obj.name for sfx in suffixes):
+            if obj.type == 'EMPTY' and any(
+                        (sfx == '_1' and obj.name.endswith(sfx)) or (sfx != '_1' and sfx in obj.name)
+                        for sfx in suffixes
+                        ):
+                
                 # Retrieve all child meshes recursively
                 matched_meshes = get_all_child_meshes_recursive(obj)
 
@@ -495,11 +529,16 @@ def assign_categories():
                     category_lists[category]['keywords'].update(keywords)
                     category_lists[category]['materials'].append(material)
 
-    # Execute commands for each category
-    for category, data in category_lists.items():
-        logging.info(f"Executing commands for {category} category.")
-        logging.debug(f"Data for category {category}: {data}")
-        #execute_commands_for_category(category, data)
+    # Define the required order for execution
+    execution_order = ['duplicated', 'foundation', 'gaugeLadder', 'ground', 'handrail', 'panel', 'stair', 'steel']
+
+    # Execute commands for each category in the specified order
+    for category in execution_order:
+        if category in category_lists:
+            data = category_lists[category]
+            logging.info(f"Executing commands for {category} category.")
+            logging.debug(f"Data for category {category}: {data}")
+            execute_commands_for_category(category, data)
 
     # Close the connection
     close_database_connection(conn)
@@ -518,7 +557,7 @@ def assign_categories():
     logging.info(f"pipes extracted {pipes}")
 
     # Perform actions for equipment, pipes, and valves
-    #perform_action_for_equi(equipments)
+    perform_action_for_equi(equipments)
     perform_action_for_pipes_and_valves(pipes, valves)
 
     # Final log statement
@@ -545,8 +584,6 @@ def get_all_child_meshes_recursive(obj):
 ## here the code starts
 #create_collection(collection_name)
 assign_categories()
-#print("Hello, World!")
-#test_equipments_names()
 print("script finished")
 
 

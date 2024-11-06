@@ -9,7 +9,8 @@ def delete_objects_by_names(object_names):
     for obj_name in object_names:
         obj = create_blender_object(obj_name)
         if obj is not None:
-            bpy.data.objects.remove(obj, do_unlink=True)
+            delete_recursive(obj)
+            #bpy.data.objects.remove(obj, do_unlink=True)
             logging.info(f"object {obj_name} deleted from the scene")
         else:
             logging.info(f"object {obj_name} not found in the scene.")
@@ -19,7 +20,7 @@ def check_object_live(obj_name):
     if mesh_object.data:
         return True
     else:
-        print(f"Object '{obj_name}' not found in the scene.") 
+        logging.warning(f"Object '{obj_name}' not found in the scene.")
         return False
     
 def check_object_live_test(obj_name):
@@ -201,7 +202,7 @@ def save_and_purge_memory():
     if current_filepath:
         bpy.ops.wm.save_as_mainfile(filepath=current_filepath)
         #bpy.types.RenderEngine.free_blender_memory()
-        print(f"File saved: {current_filepath}")
+        logging.info(f"file saved: {current_filepath}")
     else:
         print("File has not been saved yet.")       
 
@@ -524,7 +525,7 @@ def assign_new_parent_for_one_mesh(mesh_name, parent_name, collection_name, prog
 
         # Apply the original transformation matrix to preserve the transform
         mesh_object.matrix_world = original_matrix
-
+        
         # increment the progress
         progress.update(1)
 
@@ -603,25 +604,22 @@ def create_blender_object(object_name):
     try:
         # Check if the object_name is a non-empty string
         if not isinstance(object_name, str) or not object_name.strip():
-            print("Invalid object name provided. Must be a non-empty string.")
             logging.info("Invalid object name provided. Must be a non-empty string.")
             return None
-
-        print(f'Object name provided: {object_name}')
+        
+        logging.info(f'object named {object_name} provided to create a blender object for it ')
 
         # Attempt to find the object by name, with or without a leading '/'
         blender_object = bpy.data.objects.get(object_name) or bpy.data.objects.get("/" + object_name)
 
         if blender_object:
-            print(f'Blender object found: {blender_object.name} → type {blender_object.type}')
+            logging.info(f"Object '{blender_object.name}' found in the scene and returned.")
             return blender_object
         else:
-            print(f"Object '{object_name}' not found in the scene.")
-            logging.info(f"Object '{object_name}' not found in the scene.")
+            logging.info(f"Object '{blender_object.name}' not found in the scene.")
             return None  # Explicitly return None if object isn't found
 
     except Exception as e:
-        print(f"Error while creating Blender object '{object_name}': {e}")
         logging.error(f"Error while creating Blender object '{object_name}': {e}")
         return None
 
@@ -646,49 +644,65 @@ def ensure_unique_name(obj: bpy.types.Object, target_object: bpy.types.Object):
         
         # Rename the existing object
         existing_obj.name = new_name
-        print(f"Renamed existing object '{target_name}' to '{existing_obj.name}' to avoid conflicts.")
         logging.info(f"Renamed existing object '{target_name}' to '{existing_obj.name}' to avoid conflicts.")
     
     # Assign the target name to obj, ensuring no conflicts
     obj.name = target_name
     target_object.name = target_name
-    print(f"Assigned name '{target_name}' to object '{obj.name}'.")
     logging.info(f"Assigned name '{target_name}' to object '{obj.name}'.")
 
 
+def unlink_from_other_collections(object: bpy.types.Object, collection_name: str):
+    # Check if the collection exists
+    collection = bpy.data.collections.get(collection_name)
+    if collection is None:
+        logging.warning(f"Error: Collection '{collection_name}' not found.")
+        return False
+    
+    # Flag to track if any unlinking occurred
+    unlinked = False
+
+    # Unlink the object from its original collections except the target one
+    for col in object.users_collection:
+        if col != collection:
+            col.objects.unlink(object)
+            logging.info(f'Object {object.name} has been unlinked from collection {col.name}')
+            unlinked = True
+
+    if unlinked:
+        logging.info(f'Unlinking of object {object.name} has been completed.')
+        return True
+    else:
+        logging.info(f'Object {object.name} was only linked to collection {collection_name}, no other unlinking needed.')
+        return False
 
 
-# Function to merge all child meshes under the valve empty and preserve transformation
 def merge_valve_meshes(valve_empty_name, valve_parent_name, collection_name):
+    
     # Get the valve empty object
-    valve_empty = valve_empty_name
+    valve_empty = create_blender_object(valve_empty_name)
     
     if valve_empty is None or valve_empty.type != 'EMPTY':
-        print(f"Error: Valve empty '{valve_empty_name}' not found or is not an EMPTY.")
         logging.error(f"Error: Valve empty '{valve_empty_name}' not found or is not an EMPTY.")
         return None  # Return None to handle errors
     
     # Check if the collection exists
     collection = bpy.data.collections.get(collection_name)
     if collection is None:
-        print(f"Error: Collection '{collection_name}' not found.")
         logging.warning(f"Error: Collection '{collection_name}' not found.")
         return None
     
     # Get or create the parent empty object (VALVES_PARENT)
-    valve_parent = bpy.data.objects.get(valve_parent_name)
+    valve_parent = create_blender_object(valve_parent_name)
     if valve_parent is None:
-        # If it doesn't exist, create it
         valve_parent = bpy.data.objects.new(valve_parent_name, None)  # Create new empty
         collection.objects.link(valve_parent)  # Link the new empty to the collection
-        print(f"Created and linked new parent empty: {valve_parent_name}")
         logging.info(f"Created and linked new parent empty: {valve_parent_name}")
     
     # Gather all child meshes under the valve empty
     child_meshes = [child for child in valve_empty.children if child.type == 'MESH']
     
     if not child_meshes:
-        print(f"No child meshes found under valve empty '{valve_empty_name}'.")
         logging.info(f"No child meshes found under valve empty '{valve_empty_name}'.")
         return None
     
@@ -708,7 +722,7 @@ def merge_valve_meshes(valve_empty_name, valve_parent_name, collection_name):
     original_matrix = joined_mesh.matrix_world.copy()
     
     # Ensure the new object has a unique name
-    ensure_unique_name(joined_mesh, valve_empty_name)
+    ensure_unique_name(joined_mesh, valve_empty)
     
     # Re-parent the joined mesh to the parent empty (VALVES_PARENT)
     joined_mesh.parent = valve_parent
@@ -725,10 +739,28 @@ def merge_valve_meshes(valve_empty_name, valve_parent_name, collection_name):
         if col != collection:
             col.objects.unlink(joined_mesh)
     
-    print(f"Successfully merged and linked valve '{valve_empty_name}' to '{valve_parent_name}' with preserved transformation.")
-    logging.info(f"Successfully merged and linked valve '{valve_empty_name}' to '{valve_parent_name}' with preserved transformation.")
+    # Use delete_recursive to delete the valve empty and its entire hierarchy
+    #delete_recursive(valve_empty)
+    
+    logging.info(f"Successfully merged and linked valve '{valve_empty_name}' to '{valve_parent_name}' with preserved transformation, and removed the entire original empty hierarchy.")
     return joined_mesh  # Return the joined mesh object for further use
 
+    
 
+def delete_recursive(obj):
+    """Recursively delete the object and all of its children."""
+    if obj is None:
+        return
 
+    # Capture the object's name before deletion for logging
+    obj_name = obj.name
 
+    # Delete all children recursively
+    for child in obj.children:
+        delete_recursive(child)
+
+    # Delete the object itself
+    bpy.data.objects.remove(obj, do_unlink=True)
+
+    # Log after deletion using the stored name
+    logging.info(f"Deleted '{obj_name}' and its hierarchy.")
