@@ -12,9 +12,9 @@ import argparse
 
 # Define default paths
 DEFAULT_MODULE_DIR = r"C:\Users\Ahmed Abdelaal\source\repos\blenderPythonScripts\blenderPythonScripts\blenderPythonScripts\vscode scripts\blender orders test"
-DEFAULT_COMPONENT_EXCEL_PATH = r"D:\projects\NPC\20221117 3d model\optimizationV3\CD2 area A\CDU-2_1.xlsx"
-DEFAULT_LOGGING_PATH = r"D:\projects\NPC\20221117 3d model\optimizationV3\CD2 area A\CD2Area-A-z-up-try22.txt"
-DEFAULT_BLEND_FILE = r"D:\projects\NPC\20221117 3d model\optimizationV3\CD2 area A\CD2Area-A-z-up-try22.blend"
+DEFAULT_COMPONENT_EXCEL_PATH = r"D:\projects\NPC\20221117 3d model\Wadi Feran\REV.0\wadi-feran.xlsx"
+DEFAULT_LOGGING_PATH = r"D:\projects\NPC\20221117 3d model\Wadi Feran\REV.0\wadi-feran.txt"
+DEFAULT_BLEND_FILE = r"D:\projects\NPC\20221117 3d model\Wadi Feran\REV.0\wadi-feran.blend"
 BLENDER_PATH = r"C:\Program Files\Blender Foundation\Blender 3.6\blender.exe"
 
 # Parse command-line arguments
@@ -196,7 +196,7 @@ def perform_action_for_pipes_and_valves(pipes, valves):
     material_name = "00-piping grey"
 
     # Valves with slash
-    valves_with_slash = ['/' + valve for valve in valves]
+    valves_with_slash = ['/' + str(valve) for valve in valves]
 
     # Counters maximum limits
     no_of_pipes = len(pipes)
@@ -256,15 +256,19 @@ def perform_action_for_pipes_and_valves(pipes, valves):
             else:
                 logging.debug(f"Pipe {pipe} not found in the scene.")
             
-        
+            
+        valve_parent = create_blender_object(valves_oparent_name)
+
         # Step 2: Merge valve meshes before processing pipes
         for valve in valves:
             k +=1
+            
+            logging.info(f"Processing valve {valve} // {k} of {len(valves)}")
+
             # Call the valve merging function before doing any pipe processing
             logging.info(f"Merging valve meshes for {valve}.")
 
-            joined_mesh = merge_valve_meshes(valve, valves_oparent_name, collection_name)
-            logging.info(joined_mesh)
+            joined_mesh = merge_valve_meshes(valve, valve_parent, collection_name)
             
             # Save and purge memory every 10 valves
             if k % 10 == 0:
@@ -294,7 +298,7 @@ def perform_action_for_pipes_and_valves(pipes, valves):
                 assign_new_parent_for_one_mesh(new_joined_mesh, piping_parent_name, collection_name, assign_parent_progress)
                 
                 joined_mesh_object = create_blender_object(new_joined_mesh)
-        
+
                 if joined_mesh_object:
                     unlink_from_other_collections(joined_mesh_object,collection_name)
 
@@ -461,8 +465,70 @@ def perform_action_for_equi(equipments):
         # Log function state
         logging.info(f"performing action for equi ended")
 
+def handle_remaining_objects():
+    
+    # Ensure the target collection exists
+    target_collection = bpy.data.collections.get(collection_name)
+    if target_collection is None:
+        logging.warning(f"Error: Collection '{collection_name}' not found.")
+        return
+    
+    # List to hold objects that need to be merged
+    objects_to_merge = []
 
+    # Iterate through all mesh objects in the scene
+    for obj in bpy.data.objects:
+        if obj.type == 'MESH' and any(col.name != collection_name for col in obj.users_collection):
+            # Rename the object with "misc" as a prefix
+            objects_to_merge.append(obj)
+        
+    
+    # Merge objects if there are any to merge
+    if objects_to_merge:
+        
+        logging.info(f'objects to merge are {len(objects_to_merge)} => {objects_to_merge}')
+        
+        # Deselect all objects initially
+        bpy.ops.object.select_all(action='DESELECT')
+        
+        # Select objects to merge and make one of them active
+        for obj in objects_to_merge:
+            obj.select_set(True)
+        bpy.context.view_layer.objects.active = objects_to_merge[0]  # Set the active object for merging
+        
+        # Join selected objects
+        bpy.ops.object.join()
+        merged_object = bpy.context.view_layer.objects.active  # The merged object becomes the active object
+        merged_object.name = "misc_merged"  # Rename the merged object
 
+        # Link the merged object to the target collection
+        if target_collection not in merged_object.users_collection:
+            target_collection.objects.link(merged_object)
+            logging.info(f'Merged object {merged_object.name} linked to collection {collection_name}.')
+
+        # Unlink the merged object from all other collections
+        unlink_from_other_collections(merged_object, collection_name)
+
+        # Assign the material "00-piping grey" to the merged object
+        material_name = "00-piping grey"
+        material = bpy.data.materials.get(material_name)
+        if material is None:
+            # Create the material if it doesn't exist
+            material = bpy.data.materials.new(name=material_name)
+            logging.info(f'Created new material {material_name}.')
+        
+        # Ensure the material is assigned to the merged object
+        if merged_object.data.materials:
+            merged_object.data.materials[0] = material
+        else:
+            merged_object.data.materials.append(material)
+        
+        logging.info(f'Material {material_name} assigned to {merged_object.name}.')
+        logging.info(f'Completed handling for merged object {merged_object.name}.')
+
+    else:
+        logging.info("No objects needed to be merged.")
+        
 def perform_action_for_piping_equi_valves(data):
     print("performing action in piping, equipments and valves region")
 
@@ -473,9 +539,16 @@ def test_equipments_names():
     perform_action_for_equi_testing_only(equipments)
     
 def assign_categories():
+
     # Log function state
     logging.info(f"Assigning categories based on model suffix.")
-    
+
+    # Safety check: Ensure bpy.data and bpy.data.objects are valid
+    if not hasattr(bpy, 'data') or bpy.data is None or not hasattr(bpy.data, 'objects') or bpy.data.objects is None:
+        logging.error("Blender Python context is not initialized. bpy.data.objects is not available.")
+        print("Error: Blender Python context is not initialized. bpy.data.objects is not available.")
+        return
+
     # Connect to the SQL Server database
     conn, cursor = connect_to_database()
 
@@ -495,8 +568,10 @@ def assign_categories():
 
         # Iterate through all objects in the scene
         for obj in bpy.data.objects:
+            if not obj:
+                continue
             # Check if the object is a mesh and matches any suffix in the list
-            if obj.type == 'MESH' and any(sfx in obj.name for sfx in suffixes):
+            if hasattr(obj, 'type') and obj.type == 'MESH' and any(sfx in obj.name for sfx in suffixes):
                 # Add the matching mesh itself
                 category_lists[category]['objects'].append(obj.name)
                 keywords = [keyword.strip() for keyword in obj.name.split(',')]
@@ -508,22 +583,25 @@ def assign_categories():
                 
                 # Add each child mesh to the category
                 for child_mesh in all_child_meshes:
+                    if not child_mesh:
+                        continue
                     category_lists[category]['objects'].append(child_mesh.name)
                     child_keywords = [keyword.strip() for keyword in child_mesh.name.split(',')]
                     category_lists[category]['keywords'].update(child_keywords)
                     category_lists[category]['materials'].append(material)
 
             # Check if the object is an empty and matches any suffix
-            if obj.type == 'EMPTY' and any(
+            if hasattr(obj, 'type') and obj.type == 'EMPTY' and any(
                         (sfx == '_1' and obj.name.endswith(sfx)) or (sfx != '_1' and sfx in obj.name)
                         for sfx in suffixes
                         ):
-                
                 # Retrieve all child meshes recursively
                 matched_meshes = get_all_child_meshes_recursive(obj)
 
                 # Add all matched child meshes to the category
                 for mesh in matched_meshes:
+                    if not mesh:
+                        continue
                     category_lists[category]['objects'].append(mesh.name)
                     keywords = [keyword.strip() for keyword in mesh.name.split(',')]
                     category_lists[category]['keywords'].update(keywords)
@@ -584,6 +662,7 @@ def get_all_child_meshes_recursive(obj):
 ## here the code starts
 #create_collection(collection_name)
 assign_categories()
+handle_remaining_objects()
 print("script finished")
 
 

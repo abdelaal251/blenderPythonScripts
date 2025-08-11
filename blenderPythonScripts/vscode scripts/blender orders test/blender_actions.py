@@ -1,3 +1,4 @@
+import re
 import bpy
 import bmesh
 import logging
@@ -606,8 +607,6 @@ def create_blender_object(object_name):
         if not isinstance(object_name, str) or not object_name.strip():
             logging.info("Invalid object name provided. Must be a non-empty string.")
             return None
-        
-        logging.info(f'object named {object_name} provided to create a blender object for it ')
 
         # Attempt to find the object by name, with or without a leading '/'
         blender_object = bpy.data.objects.get(object_name) or bpy.data.objects.get("/" + object_name)
@@ -624,32 +623,44 @@ def create_blender_object(object_name):
         return None
 
 
-# Function to rename any existing object with the same name to avoid conflicts
 def ensure_unique_name(obj: bpy.types.Object, target_object: bpy.types.Object):
+    # Ensure that target_object is a valid Blender object
     if not isinstance(target_object, bpy.types.Object):
         raise TypeError(f"Expected target_object to be a Blender Object, but got {type(target_object)} instead.")
     
-    # Explicitly store a copy of the target object's name
-    target_name = str(target_object.name)
-    
-    # Find an existing object by the target name
-    existing_obj = bpy.data.objects.get(target_name)
+    # Remove any .001, .002, etc., suffix from target_object's name
+    base_name = re.sub(r"\.\d{3}$", "", target_object.name)
+
+    # Check if any object with the base name already exists and is not the target object
+    existing_obj = bpy.data.objects.get(base_name)
     if existing_obj and existing_obj != target_object:
-        # Modify the existing object’s name by adding an incrementing suffix until it is unique
+        # Rename the existing object to avoid conflict by appending a unique suffix
         counter = 1
-        new_name = f"{target_name}_old_{counter}"
+        new_name = f"{base_name}_old_{counter}"
         while new_name in bpy.data.objects:
             counter += 1
-            new_name = f"{target_name}_old_{counter}"
+            new_name = f"{base_name}_old_{counter}"
         
-        # Rename the existing object
+        # Rename the conflicting object
         existing_obj.name = new_name
-        logging.info(f"Renamed existing object '{target_name}' to '{existing_obj.name}' to avoid conflicts.")
+        logging.info(f"Renamed existing object '{base_name}' to '{existing_obj.name}' to avoid conflicts.")
     
-    # Assign the target name to obj, ensuring no conflicts
-    obj.name = target_name
-    target_object.name = target_name
-    logging.info(f"Assigned name '{target_name}' to object '{obj.name}'.")
+    # Assign the base name to obj, now that it is guaranteed to be unique
+    obj.name = base_name
+    target_object.name = base_name
+    logging.info(f"Assigned name '{base_name}' to object '{obj.name}'.")
+
+    # Final check to ensure no Blender-generated suffix remains
+    if re.search(r"\.\d{3}$", obj.name):  # If a suffix was still generated, handle it
+        logging.info(f"Detected Blender-generated suffix in '{obj.name}'. Removing suffix.")
+        counter = 1
+        final_name = f"{base_name}_{counter}"
+        while final_name in bpy.data.objects:
+            counter += 1
+            final_name = f"{base_name}_{counter}"
+        
+        obj.name = final_name
+        logging.info(f"Final unique name for object is '{obj.name}'.")
 
 
 def unlink_from_other_collections(object: bpy.types.Object, collection_name: str):
@@ -677,7 +688,7 @@ def unlink_from_other_collections(object: bpy.types.Object, collection_name: str
         return False
 
 
-def merge_valve_meshes(valve_empty_name, valve_parent_name, collection_name):
+def merge_valve_meshes(valve_empty_name: str, valve_parent_object: bpy.types.Object, collection_name: str):
     
     # Get the valve empty object
     valve_empty = create_blender_object(valve_empty_name)
@@ -693,11 +704,10 @@ def merge_valve_meshes(valve_empty_name, valve_parent_name, collection_name):
         return None
     
     # Get or create the parent empty object (VALVES_PARENT)
-    valve_parent = create_blender_object(valve_parent_name)
-    if valve_parent is None:
-        valve_parent = bpy.data.objects.new(valve_parent_name, None)  # Create new empty
+    if valve_parent_object is None:
+        valve_parent_object = bpy.data.objects.new(valve_parent_object.name, None)  # Create new empty
         collection.objects.link(valve_parent)  # Link the new empty to the collection
-        logging.info(f"Created and linked new parent empty: {valve_parent_name}")
+        logging.info(f"Created and linked new parent empty: {valve_parent_object}")
     
     # Gather all child meshes under the valve empty
     child_meshes = [child for child in valve_empty.children if child.type == 'MESH']
@@ -711,12 +721,14 @@ def merge_valve_meshes(valve_empty_name, valve_parent_name, collection_name):
     for mesh in child_meshes:
         mesh.select_set(True)  # Select each mesh
     bpy.context.view_layer.objects.active = child_meshes[0]  # Set one active object
+    logging.info(f'active object is {bpy.context.view_layer.objects.active.name}')
     
     # Join the selected meshes into a single mesh
     bpy.ops.object.join()
     
     # Get the newly joined mesh object
     joined_mesh = bpy.context.active_object
+    logging.info(f'joined mesh name {joined_mesh.name}')
     
     # Store the original transformation matrix of the joined mesh
     original_matrix = joined_mesh.matrix_world.copy()
@@ -725,7 +737,8 @@ def merge_valve_meshes(valve_empty_name, valve_parent_name, collection_name):
     ensure_unique_name(joined_mesh, valve_empty)
     
     # Re-parent the joined mesh to the parent empty (VALVES_PARENT)
-    joined_mesh.parent = valve_parent
+    joined_mesh.parent = valve_parent_object.name
+    logging.info(f'new parent assigned for {joined_mesh.name} is {joined_mesh.parent.name}')
     
     # Restore the original transformation to preserve location, rotation, and scale
     joined_mesh.matrix_world = original_matrix
@@ -738,11 +751,12 @@ def merge_valve_meshes(valve_empty_name, valve_parent_name, collection_name):
     for col in joined_mesh.users_collection:
         if col != collection:
             col.objects.unlink(joined_mesh)
+    logging.info(f'user collection linked to {joined_mesh.name} is {joined_mesh.users_collection}')
     
     # Use delete_recursive to delete the valve empty and its entire hierarchy
     #delete_recursive(valve_empty)
     
-    logging.info(f"Successfully merged and linked valve '{valve_empty_name}' to '{valve_parent_name}' with preserved transformation, and removed the entire original empty hierarchy.")
+    logging.info(f"Successfully merged and linked valve '{valve_empty_name}' to '{valve_parent_object.name}' with preserved transformation, and removed the entire original empty hierarchy.")
     return joined_mesh  # Return the joined mesh object for further use
 
     
