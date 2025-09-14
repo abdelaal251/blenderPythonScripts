@@ -221,55 +221,49 @@ def perform_action_for_pipes_and_valves(pipes, valves):
         
 
         # Step 1: Process each pipe after the valve meshes have been merged
+
         for pipe in pipes:
-            
             i += 1
             logging.info(f"Processing pipe {pipe} // {i} of {no_of_pipes}")
-            
-            # try to get pipe with same name as it is
+            # Try to get pipe with same name as it is
             blender_object = create_blender_object(pipe)
-
-            
+            # If not found, try with leading underscore
+            if not blender_object:
+                blender_object = create_blender_object(f"_{pipe}")
+                if blender_object:
+                    logging.info(f"Pipe {pipe} found with leading underscore.")
             if blender_object:
                 piping_list_in_model.append(pipe)
                 # Check if the pipe object is visible
                 if not blender_object.hide_get():
                     child_list = []  # List to store child meshes
-                    
                     # Select child meshes
                     select_childeren_under_empty(pipe, child_list)
-                    
-                    # UV unwrap all child meshes
-                    #uv_unwrap_cube_projection(child_list, pojection_size, uv_progress_bar)
-                    
-                    # Make UVUnwrap using cube projection method in batchs!
-                    #batch_uv_unwrap_with_batches(child_list, pojection_size, uv_progress_bar)
-
                     # Assign material to the child meshes
                     link_objects_with_material(child_list, material_name, assign_material_progress)
-                
-                    
                     # Save and purge memory every 10 iterations
                     if i % 10 == 0:
                         save_and_purge_memory()
                         logging.info(f"Memory saved and purged at pipe {i}.")
             else:
-                logging.debug(f"Pipe {pipe} not found in the scene.")
+                logging.debug(f"Pipe {pipe} not found in the scene (even with leading underscore).")
             
             
         valve_parent = create_blender_object(valves_oparent_name)
 
         # Step 2: Merge valve meshes before processing pipes
+
         for valve in valves:
-            k +=1
-            
+            k += 1
             logging.info(f"Processing valve {valve} // {k} of {len(valves)}")
-
-            # Call the valve merging function before doing any pipe processing
-            logging.info(f"Merging valve meshes for {valve}.")
-
+            # Try merging with the name as is
             joined_mesh = merge_valve_meshes(valve, valve_parent, collection_name)
-            
+            # If not found, try with leading underscore
+            if not joined_mesh:
+                logging.info(f"Valve {valve} not found, trying with leading underscore.")
+                joined_mesh = merge_valve_meshes(f"_{valve}", valve_parent, collection_name)
+                if joined_mesh:
+                    logging.info(f"Valve {valve} found with leading underscore.")
             # Save and purge memory every 10 valves
             if k % 10 == 0:
                 save_and_purge_memory()
